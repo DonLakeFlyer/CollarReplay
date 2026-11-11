@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Collar Replay</title>
+  </head>
+  <body>
+    <div id="map"></div>
+
+    <aside id="panel">
+      <h1>Collar Replay</h1>
+      <label class="button">
+        Open CSV files…
+        <input id="file-input" type="file" accept=".csv,text/csv" multiple hidden />
+      </label>
+      <p class="hint">or drop collar CSVs on the map. Each file is one pack; ranges are 95% MCP.</p>
+      <p id="status"></p>
+      <ul id="packs"></ul>
+    </aside>
+
+    <footer id="timeline" hidden>
+      <button id="play" type="button">Play</button>
+      <input id="time-slider" type="range" step="any" />
+      <span id="time-label"></span>
+      <label>
+        Speed
+        <select id="speed">
+          <option value="3600000">1 hour/s</option>
+          <option value="21600000">6 hours/s</option>
+          <option value="86400000" selected>1 day/s</option>
+          <option value="172800000">2 days/s</option>
+          <option value="259200000">3 days/s</option>
+          <option value="432000000">5 days/s</option>
+          <option value="604800000">1 week/s</option>
+        </select>
+      </label>
+      <label>
+        Trail
+        <select id="trail">
+          <option value="0">Off</option>
+          <option value="86400000" selected>1 day</option>
+          <option value="259200000">3 days</option>
+          <option value="604800000">1 week</option>
+        </select>
+      </label>
+    </footer>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
