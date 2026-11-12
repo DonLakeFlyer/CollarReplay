@@ -37,6 +37,7 @@ function element<T extends HTMLElement>(id: string): T {
 
 const fileInput = element<HTMLInputElement>('file-input');
 const statusLabel = element<HTMLParagraphElement>('status');
+const panelDetails = element<HTMLDetailsElement>('panel-details');
 const packList = element<HTMLUListElement>('packs');
 const timeline = element<HTMLElement>('timeline');
 const playButton = element<HTMLButtonElement>('play');
@@ -232,6 +233,9 @@ async function loadFiles(files: File[]) {
         }
     }
     statusLabel.textContent = errors.join('\n');
+    if (errors.length > 0) {
+        panelDetails.open = true;
+    }
     if (packs.size === 0) {
         return;
     }
@@ -251,6 +255,7 @@ async function loadFiles(files: File[]) {
 
     if (!anyUsable) {
         statusLabel.textContent = [...errors, 'No usable fixes in the loaded files'].join('\n');
+        panelDetails.open = true;
         setPlaying(false);
         timeline.hidden = true;
         return;

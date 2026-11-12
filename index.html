@@ -9,15 +9,17 @@
     <div id="map"></div>
 
     <aside id="panel">
-      <h1>Collar Replay</h1>
-      <label class="button">
-        Open CSV files…
-        <input id="file-input" type="file" accept=".csv,text/csv" multiple hidden />
-      </label>
-      <p class="hint">or drop collar CSVs on the map. Each file is one pack; ranges are 95% MCP.</p>
-      <label class="hint"><input id="show-filtered" type="checkbox" /> Show filtered fixes on the map</label>
-      <p id="status"></p>
-      <ul id="packs"></ul>
+      <details id="panel-details" open>
+        <summary><h1>Collar Replay</h1></summary>
+        <label class="button">
+          Open CSV files…
+          <input id="file-input" type="file" accept=".csv,text/csv" multiple hidden />
+        </label>
+        <p class="hint">or drop collar CSVs on the map. Each file is one pack; ranges are 95% MCP.</p>
+        <label class="hint"><input id="show-filtered" type="checkbox" /> Show filtered fixes on the map</label>
+        <p id="status"></p>
+        <ul id="packs"></ul>
+      </details>
     </aside>
 
     <footer id="timeline" hidden>
