@@ -1,21 +1,31 @@
 import 'leaflet/dist/leaflet.css';
 import './style.css';
 import * as L from 'leaflet';
-import { parseCollarCsv, removeOutliers, type Fix, type LatLon } from './collar';
+import { cleanFixes, type FlaggedFix, type FlagReason } from './clean';
+import { parseCollarCsv, type Fix, type LatLon } from './collar';
 import { minimumConvexPolygon } from './range';
 import { positionAt, trailAt } from './replay';
 
 const RANGE_PERCENT = 95;
+const MAX_SPEED_KMH = 6;
 // Fixes this far from a pack's median position are treated as collar errors or pre-deployment fixes.
 const OUTLIER_KM = 100;
 const COLORS = ['#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#42d4f4', '#f032e6', '#9a6324', '#000075', '#808000'];
+const REASON_LABELS: Record<FlagReason, string> = {
+    duplicate: 'duplicate',
+    'far-from-home': 'far from home',
+    'before-deployment': 'before collar fitted',
+    spike: 'GPS spike',
+    vehicle: 'vehicle',
+};
 
 interface PackView {
     name: string;
     color: string;
     fixes: Fix[];
-    outliers: number;
+    flagged: FlaggedFix[];
     layers: L.LayerGroup;
+    flaggedLayer: L.LayerGroup;
     trail: L.Polyline;
     marker: L.CircleMarker;
     visible: boolean;
@@ -34,6 +44,7 @@ const slider = element<HTMLInputElement>('time-slider');
 const timeLabel = element<HTMLSpanElement>('time-label');
 const speedSelect = element<HTMLSelectElement>('speed');
 const trailSelect = element<HTMLSelectElement>('trail');
+const showFilteredCheckbox = element<HTMLInputElement>('show-filtered');
 const mapElement = element<HTMLDivElement>('map');
 
 const map = L.map(mapElement).setView([0, 20], 3);
@@ -69,22 +80,44 @@ function formatUtc(time: number): string {
     return new Date(time).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
 }
 
+const isoDate = (time: number) => new Date(time).toISOString().slice(0, 10);
+
 function timeBounds(): [number, number] {
     let start = Infinity;
     let end = -Infinity;
     for (const pack of packs.values()) {
-        start = Math.min(start, pack.fixes[0]!.time);
-        end = Math.max(end, pack.fixes[pack.fixes.length - 1]!.time);
+        if (pack.fixes.length > 0) {
+            start = Math.min(start, pack.fixes[0]!.time);
+            end = Math.max(end, pack.fixes[pack.fixes.length - 1]!.time);
+        }
     }
     return [start, end];
 }
 
-function addPack(name: string, allFixes: Fix[]) {
+function packDetails(pack: PackView): string {
+    let details = 'No usable fixes';
+    if (pack.fixes.length > 0) {
+        const first = isoDate(pack.fixes[0]!.time);
+        const last = isoDate(pack.fixes[pack.fixes.length - 1]!.time);
+        details = `${pack.fixes.length} fixes, ${first} – ${last}`;
+    }
+    if (pack.flagged.length > 0) {
+        const counts = new Map<FlagReason, number>();
+        for (const fix of pack.flagged) {
+            counts.set(fix.reason, (counts.get(fix.reason) ?? 0) + 1);
+        }
+        const parts = [...counts].map(([reason, count]) => `${count} ${REASON_LABELS[reason]}`);
+        details += `. Filtered ${pack.flagged.length}: ${parts.join(', ')}`;
+    }
+    return details;
+}
+
+function addPack(name: string, rawFixes: Fix[]) {
     const existing = packs.get(name);
     existing?.layers.remove();
     const color = existing?.color ?? COLORS[packs.size % COLORS.length]!;
 
-    const fixes = removeOutliers(allFixes, OUTLIER_KM);
+    const { kept: fixes, flagged } = cleanFixes(rawFixes, { maxSpeedKmh: MAX_SPEED_KMH, outlierKm: OUTLIER_KM });
     const polygon = L.polygon(minimumConvexPolygon(fixes, RANGE_PERCENT).map(toLatLng), {
         color,
         weight: 2,
@@ -93,14 +126,24 @@ function addPack(name: string, allFixes: Fix[]) {
     const trail = L.polyline([], { color, weight: 3, opacity: 0.9 });
     const marker = L.circleMarker([0, 0], { radius: 7, color: '#fff', weight: 2, fillColor: color, fillOpacity: 1 })
         .bindTooltip(textElement('span', name), { permanent: true, direction: 'right', offset: [8, 0] });
+    const flaggedLayer = L.layerGroup();
+    for (const fix of flagged) {
+        L.circleMarker(toLatLng(fix), { radius: 4, color: '#555', weight: 1, fillColor: '#ddd', fillOpacity: 0.9 })
+            .bindTooltip(textElement('span', `${name}: ${REASON_LABELS[fix.reason]}, ${formatUtc(fix.time)}`))
+            .addTo(flaggedLayer);
+    }
     const layers = L.layerGroup([polygon, trail]);
+    if (showFilteredCheckbox.checked) {
+        layers.addLayer(flaggedLayer);
+    }
 
     packs.set(name, {
         name,
         color,
         fixes,
-        outliers: allFixes.length - fixes.length,
+        flagged,
         layers,
+        flaggedLayer,
         trail,
         marker,
         visible: existing?.visible ?? true,
@@ -127,16 +170,9 @@ function renderPackList() {
         const swatch = textElement('span', '', 'swatch');
         swatch.style.background = pack.color;
 
-        const first = pack.fixes[0]!.time;
-        const last = pack.fixes[pack.fixes.length - 1]!.time;
-        let details = `${pack.fixes.length} fixes, ${formatUtc(first).slice(0, 10)} – ${formatUtc(last).slice(0, 10)}`;
-        if (pack.outliers > 0) {
-            details += `, ${pack.outliers} outlying fix${pack.outliers > 1 ? 'es' : ''} ignored`;
-        }
-
         const name = textElement('label', pack.name, 'pack-name');
         name.prepend(checkbox);
-        item.append(swatch, name, textElement('span', details, 'pack-details'));
+        item.append(swatch, name, textElement('span', packDetails(pack), 'pack-details'));
         packList.append(item);
     }
 }
@@ -199,24 +235,32 @@ async function loadFiles(files: File[]) {
     if (packs.size === 0) {
         return;
     }
+    renderPackList();
+    const anyUsable = [...packs.values()].some((pack) => pack.fixes.length > 0);
 
     const bounds = L.latLngBounds([]);
     for (const pack of packs.values()) {
         if (pack.visible) {
             pack.layers.addTo(map);
         }
-        for (const fix of pack.fixes) {
+        for (const fix of anyUsable ? pack.fixes : pack.flagged) {
             bounds.extend(toLatLng(fix));
         }
     }
     map.fitBounds(bounds, { padding: [20, 20] });
+
+    if (!anyUsable) {
+        statusLabel.textContent = [...errors, 'No usable fixes in the loaded files'].join('\n');
+        setPlaying(false);
+        timeline.hidden = true;
+        return;
+    }
 
     const [start, end] = timeBounds();
     slider.min = String(start);
     slider.max = String(end);
     currentTime = Math.min(Math.max(currentTime, start), end);
     timeline.hidden = false;
-    renderPackList();
     render();
 }
 
@@ -252,3 +296,12 @@ slider.addEventListener('input', () => {
     render();
 });
 trailSelect.addEventListener('change', render);
+showFilteredCheckbox.addEventListener('change', () => {
+    for (const pack of packs.values()) {
+        if (showFilteredCheckbox.checked) {
+            pack.layers.addLayer(pack.flaggedLayer);
+        } else {
+            pack.layers.removeLayer(pack.flaggedLayer);
+        }
+    }
+});

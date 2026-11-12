@@ -96,6 +96,10 @@ body {
   font-size: 12px;
 }
 
+label.hint {
+  display: block;
+}
+
 #timeline {
   left: 10px;
   right: 10px;
