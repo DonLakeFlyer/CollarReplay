@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseCollarCsv, removeOutliers } from './collar';
+import { parseCollarCsv } from './collar';
 
 const header =
     'UTC Timestamp,Latitude,Longitude,GPS Accuracy,Number of SVs,Altitude (metres),Speed (km/h),Heading,' +
@@ -35,18 +35,5 @@ describe('parseCollarCsv', () => {
 
     it('rejects files without the required columns', () => {
         expect(() => parseCollarCsv('a,b,c\n1,2,3\n')).toThrow(/Latitude/);
-    });
-});
-
-describe('removeOutliers', () => {
-    it('drops fixes far from the median position', () => {
-        const home = [
-            { time: 1, lat: -18.9, lon: 27.1 },
-            { time: 2, lat: -18.95, lon: 27.15 },
-            { time: 3, lat: -18.85, lon: 27.05 },
-        ];
-        // Pre-deployment fix recorded in Cape Town (Umkhonto.csv).
-        const capeTown = { time: 0, lat: -33.93, lon: 18.42 };
-        expect(removeOutliers([capeTown, ...home], 100)).toEqual(home);
     });
 });

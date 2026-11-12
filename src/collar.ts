@@ -51,18 +51,3 @@ export function distanceKm(a: LatLon, b: LatLon): number {
     const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLon / 2) ** 2;
     return 2 * 6371 * Math.asin(Math.sqrt(h));
 }
-
-function median(values: number[]): number {
-    const sorted = [...values].sort((a, b) => a - b);
-    const mid = Math.floor(sorted.length / 2);
-    return sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
-}
-
-/** Drops fixes more than maxKm from the median position, e.g. fixes recorded before the collar was deployed. */
-export function removeOutliers<T extends LatLon>(fixes: T[], maxKm: number): T[] {
-    if (fixes.length === 0) {
-        return fixes;
-    }
-    const center = { lat: median(fixes.map((f) => f.lat)), lon: median(fixes.map((f) => f.lon)) };
-    return fixes.filter((f) => distanceKm(f, center) <= maxKm);
-}
